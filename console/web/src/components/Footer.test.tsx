@@ -15,7 +15,7 @@ describe("Footer", () => {
     expect(await screen.findByText("v0.3.0")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "GitHub" })).toHaveAttribute(
       "href",
-      "https://github.com/day0ops/agora-demo",
+      "https://github.com/day0ops/agora",
     );
   });
 

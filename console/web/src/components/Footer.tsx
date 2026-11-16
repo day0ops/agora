@@ -24,7 +24,7 @@ export function Footer() {
       <span>{APP_NAME}</span>
       <span>{version ?? ""}</span>
       <a
-        href="https://github.com/day0ops/agora-demo"
+        href="https://github.com/day0ops/agora"
         target="_blank"
         rel="noopener noreferrer"
       >
