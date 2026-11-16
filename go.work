@@ -1,0 +1,13 @@
+go 1.27.0
+
+use (
+	./catalog-api
+	./console
+	./fixtures
+	./mcp-servers/bids-mcp
+	./mcp-servers/catalog-mcp
+	./mcp-servers/orders-mcp
+	./mcp-servers/pricing-mcp
+	./mcp-servers/trust-mcp
+	./trust-scoring
+)
