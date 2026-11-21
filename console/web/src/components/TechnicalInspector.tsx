@@ -35,6 +35,25 @@ export function TechnicalInspector({
       </div>
     );
   }
+  if (result.status === "error") {
+    // Deliberately NOT NotConnectedBanner - a configured source that
+    // genuinely failed must look visibly different from "not connected",
+    // not just read different (final review finding #6).
+    return (
+      <div className="inspector-table-wrap">
+        <table className="inspector-table">
+          <thead>{header}</thead>
+          <tbody>
+            <tr>
+              <td colSpan={COLUMNS.length}>
+                <div className="note error">{result.message}</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  }
   return (
     <div className="inspector-table-wrap">
       <table className="inspector-table">

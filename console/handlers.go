@@ -15,6 +15,20 @@ type consoleServer struct {
 	catalog *catalogClient
 	hub     *eventHub
 	invoker AgentInvoker
+
+	// actorSource is nil whenever this deployment has no ATE_API_ENDPOINT
+	// configured (e.g. local dev) - handleSubstrateStatus treats that as
+	// "not configured", not an error.
+	actorSource ActorSource
+
+	// probeInvoker/systemToken are nil together whenever this deployment has
+	// no isolation-check system identity configured. Deliberately separate
+	// from `invoker` above: probeInvoker is authenticated with the
+	// console's own system identity (never a visitor's forwarded token) and
+	// only ever targets trust-safety/auto-bidder via an in-cluster
+	// kagent-controller URL, never the public agentgateway-routed one.
+	probeInvoker AgentInvoker
+	systemToken  SystemTokenSource
 }
 
 func newConsoleServer(catalog *catalogClient, hub *eventHub, invoker AgentInvoker) *consoleServer {

@@ -9,8 +9,21 @@ describe("TechnicalInspector", () => {
         result={{ status: "empty", reason: "No live substrate." }}
       />,
     );
-    expect(screen.getByText("No live substrate.")).toBeInTheDocument();
+    const banner = screen.getByText("No live substrate.");
+    expect(banner).toBeInTheDocument();
+    expect(banner).not.toHaveClass("error");
     expect(screen.getAllByRole("columnheader")).toHaveLength(5);
+  });
+
+  it("renders a real error state with a visibly distinct class from the empty banner", () => {
+    render(
+      <TechnicalInspector
+        result={{ status: "error", message: "execution adapter unreachable" }}
+      />,
+    );
+    const banner = screen.getByText("execution adapter unreachable");
+    expect(banner).toBeInTheDocument();
+    expect(banner).toHaveClass("error");
   });
 
   it("renders one row per step when status is real", () => {

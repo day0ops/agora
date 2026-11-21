@@ -130,6 +130,33 @@ export function getStats(): Promise<Stats> {
   return request("GET", "/account/stats");
 }
 
+export interface SubstrateStatusRaw {
+  actors: {
+    id: string;
+    template: string;
+    state: string;
+    pool: string;
+    lastActivity: string;
+  }[];
+  workers: { name: string; pool: string; state: string; occupancy: string }[];
+}
+
+export function getSubstrateStatusRaw(): Promise<SubstrateStatusRaw> {
+  return request("GET", "/account/substrate/status");
+}
+
+export type IsolationProbeTarget = "trust-safety" | "auto-bidder";
+
+export interface IsolationCheckResponse {
+  reply: string;
+}
+
+export function postIsolationCheck(
+  target: IsolationProbeTarget,
+): Promise<IsolationCheckResponse> {
+  return request("POST", "/account/substrate/isolation-check", { target });
+}
+
 export interface VersionInfo {
   version: string;
 }

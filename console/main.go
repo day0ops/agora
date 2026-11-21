@@ -58,6 +58,30 @@ func main() {
 
 	srv := newConsoleServer(newCatalogClient(catalogAPIURL), newEventHub(), invoker)
 
+	if endpoint := os.Getenv("ATE_API_ENDPOINT"); endpoint != "" {
+		srv.actorSource = newKubectlAteActorSource(
+			envOr("KUBECTL_ATE_BIN_PATH", "/usr/local/bin/kubectl-ate"),
+			endpoint,
+			// Deliberately AGORA_ATESPACE, not ATE_NAMESPACE - kubectl-ate
+			// itself reads ATE_NAMESPACE from its own process environment
+			// for a different, reserved purpose (its control-plane target,
+			// see source.go's kubectlAteReservedEnvVars) - reusing that name
+			// here would silently redirect kubectl-ate away from the real
+			// ate-system control plane.
+			envOr("AGORA_ATESPACE", "kagent-system"),
+			envOr("ATE_WORKER_POOL_NAME", "agora-workers"),
+		)
+	}
+
+	probeBase := os.Getenv("KAGENT_PROBE_BASE_URL")
+	tokenURL := os.Getenv("AGORA_SYSTEM_OIDC_TOKEN_URL")
+	clientID := os.Getenv("AGORA_SYSTEM_OIDC_CLIENT_ID")
+	clientSecret := os.Getenv("AGORA_SYSTEM_OIDC_CLIENT_SECRET")
+	if probeBase != "" && tokenURL != "" && clientID != "" && clientSecret != "" {
+		srv.probeInvoker = newAgentInvokerHTTP(probeBase)
+		srv.systemToken = newKeycloakSystemTokenSource(tokenURL, clientID, clientSecret)
+	}
+
 	dist, err := fs.Sub(webDist, "web/dist")
 	if err != nil {
 		log.Fatalf("console: load embedded web/dist: %v", err)
