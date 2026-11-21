@@ -15,6 +15,11 @@ type consoleServer struct {
 	catalog *catalogClient
 	hub     *eventHub
 	invoker AgentInvoker
+
+	// actorSource is nil whenever this deployment has no ATE_API_ENDPOINT
+	// configured (e.g. local dev) - handleSubstrateStatus treats that as
+	// "not configured", not an error.
+	actorSource ActorSource
 }
 
 func newConsoleServer(catalog *catalogClient, hub *eventHub, invoker AgentInvoker) *consoleServer {

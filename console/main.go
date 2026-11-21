@@ -58,6 +58,15 @@ func main() {
 
 	srv := newConsoleServer(newCatalogClient(catalogAPIURL), newEventHub(), invoker)
 
+	if endpoint := os.Getenv("ATE_API_ENDPOINT"); endpoint != "" {
+		srv.actorSource = newKubectlAteActorSource(
+			envOr("KUBECTL_ATE_BIN_PATH", "/usr/local/bin/kubectl-ate"),
+			endpoint,
+			envOr("ATE_NAMESPACE", "kagent-system"),
+			envOr("ATE_WORKER_POOL_NAME", "agora-workers"),
+		)
+	}
+
 	dist, err := fs.Sub(webDist, "web/dist")
 	if err != nil {
 		log.Fatalf("console: load embedded web/dist: %v", err)
