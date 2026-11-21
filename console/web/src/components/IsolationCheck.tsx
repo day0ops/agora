@@ -45,11 +45,12 @@ export function IsolationCheck() {
         tool bindings. A correct answer says it can&rsquo;t help - that&rsquo;s
         live proof this agent has no path to comply, not a scripted denial.
       </div>
-      <div className="isolation-check-buttons">
+      <div style={{ display: "flex", gap: 8 }}>
         {PROBES.map((p) => (
           <button
             key={p.target}
             type="button"
+            className="secondary"
             disabled={loading !== null}
             onClick={() => void runProbe(p.target)}
           >
@@ -58,12 +59,8 @@ export function IsolationCheck() {
         ))}
       </div>
       {result && (
-        <div className="isolation-check-result">
-          {result.error ? (
-            <span className="isolation-check-error">{result.error}</span>
-          ) : (
-            <span>{result.reply}</span>
-          )}
+        <div className={result.error ? "note error" : "note"}>
+          {result.error ?? result.reply}
         </div>
       )}
     </div>
