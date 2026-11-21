@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -133,5 +134,33 @@ func TestHandleIsolationCheckMapsAuthFailureHonestly(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if strings.Contains(strings.ToLower(resp.Error), "log in") {
 		t.Errorf("probe auth failure must not read like a login prompt, got %q", resp.Error)
+	}
+	if !strings.Contains(resp.Error, "RBAC") {
+		t.Errorf("an actual ErrNotAuthenticated should still get the RBAC/Keycloak-config wording, got %q", resp.Error)
+	}
+}
+
+// TestHandleIsolationCheckDoesNotMisreportNonAuthFailures reproduces the
+// finding that every probe failure, regardless of cause, was previously
+// mapped to the same "check RBAC/Keycloak config" message - misleading for
+// a real timeout/upstream error that has nothing to do with authorization.
+func TestHandleIsolationCheckDoesNotMisreportNonAuthFailures(t *testing.T) {
+	realErr := errors.New("call agent \"auto-bidder\": context deadline exceeded")
+	inv := &fakeProbeInvoker{err: realErr}
+	s := newConsoleServer(newCatalogClient("http://unused"), newEventHub(), AgentInvokerStub{})
+	s.probeInvoker = inv
+	s.systemToken = fakeTokenSource{token: "sys-tok"}
+	body := strings.NewReader(`{"target":"auto-bidder"}`)
+	req := httptest.NewRequest("POST", "/account/substrate/isolation-check", body)
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-operator", []string{"operators"}))
+	w := httptest.NewRecorder()
+	s.handleIsolationCheck(w, req)
+	var resp errorResponse
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	if !strings.Contains(resp.Error, "context deadline exceeded") {
+		t.Errorf("a non-auth failure should report its real cause, got %q", resp.Error)
+	}
+	if strings.Contains(resp.Error, "RBAC") {
+		t.Errorf("a non-auth failure must not be misreported as an RBAC/Keycloak config issue, got %q", resp.Error)
 	}
 }

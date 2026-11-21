@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -58,14 +59,17 @@ type ActorSource interface {
 // -o json` for real once this is deployed, and adjust the struct tags here
 // if the live response differs in any field name or nesting.
 type kubectlAteActorSource struct {
-	binPath        string // path to the bundled kubectl-ate binary
-	endpoint       string // e.g. api.ate-system.svc.cluster.local:443
-	namespace      string // kagent namespace the agora-workers WorkerPool/atespace lives in
+	binPath  string // path to the bundled kubectl-ate binary
+	endpoint string // e.g. api.ate-system.svc.cluster.local:443
+	atespace string // the kagent namespace agora-workers/the agents' actors live in -
+	// deliberately not named "namespace" to avoid any reader conflating this with
+	// ATE_NAMESPACE, which is a different, reserved concept kubectl-ate itself
+	// reads from its own process environment (see kubectlAteReservedEnvVars)
 	workerPoolName string // e.g. agora-workers -- filters ListWorkerPods to this pool only
 }
 
-func newKubectlAteActorSource(binPath, endpoint, namespace, workerPoolName string) *kubectlAteActorSource {
-	return &kubectlAteActorSource{binPath: binPath, endpoint: endpoint, namespace: namespace, workerPoolName: workerPoolName}
+func newKubectlAteActorSource(binPath, endpoint, atespace, workerPoolName string) *kubectlAteActorSource {
+	return &kubectlAteActorSource{binPath: binPath, endpoint: endpoint, atespace: atespace, workerPoolName: workerPoolName}
 }
 
 type ateMetadata struct {
@@ -129,8 +133,44 @@ type ateWorkersResponse struct {
 	Workers []ateWorkerRecord `json:"workers"`
 }
 
+// kubectlAteReservedEnvVars are read by kubectl-ate itself, straight out of
+// its own process environment, to locate the substrate control plane
+// (solo-io/substrate's internal/ateclient/builder.go: NamespaceEnv,
+// APIServiceEnv, ClientServiceAccountEnv). Any same-named variable this
+// console process happens to carry for its own purposes would silently
+// override kubectl-ate's target instead of just being ignored - confirmed
+// live during review: ATE_NAMESPACE set to this console's own namespace
+// redirected kubectl-ate's TokenRequest/TLS-SNI/port-forward target away
+// from the real ate-system control plane. filteredChildEnv strips exactly
+// these three keys from the inherited environment before every exec, so
+// kubectl-ate always falls back to its own correct built-in defaults
+// regardless of what this process's environment contains now or later.
+var kubectlAteReservedEnvVars = []string{
+	"ATE_NAMESPACE=",
+	"ATE_API_SERVICE_NAME=",
+	"ATE_CLIENT_SERVICE_ACCOUNT=",
+}
+
+func filteredChildEnv(parent []string) []string {
+	filtered := make([]string, 0, len(parent))
+	for _, kv := range parent {
+		reserved := false
+		for _, prefix := range kubectlAteReservedEnvVars {
+			if strings.HasPrefix(kv, prefix) {
+				reserved = true
+				break
+			}
+		}
+		if !reserved {
+			filtered = append(filtered, kv)
+		}
+	}
+	return filtered
+}
+
 func (s *kubectlAteActorSource) run(ctx context.Context, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, s.binPath, append(args, "--endpoint", s.endpoint, "-o", "json")...) //nolint:gosec // fixed binary, fixed args
+	cmd.Env = filteredChildEnv(os.Environ())
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -153,7 +193,7 @@ func ateStateToState(s string) string {
 // --atespace <namespace> - deliberately excluding the golden-snapshot
 // atespace, whose actors are always suspended and are not real sessions.
 func (s *kubectlAteActorSource) ListActors(ctx context.Context) ([]Actor, error) {
-	out, err := s.run(ctx, "get", "actors", "--atespace", s.namespace)
+	out, err := s.run(ctx, "get", "actors", "--atespace", s.atespace)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +232,7 @@ func parseActorsJSON(data []byte) ([]Actor, error) {
 // that namespace (e.g. kagent-default alongside agora-workers), so this
 // filters by pool client-side.
 func (s *kubectlAteActorSource) ListWorkerPods(ctx context.Context) ([]WorkerPod, error) {
-	out, err := s.run(ctx, "get", "workers", "-n", s.namespace)
+	out, err := s.run(ctx, "get", "workers", "-n", s.atespace)
 	if err != nil {
 		return nil, err
 	}

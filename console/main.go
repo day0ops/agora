@@ -62,7 +62,13 @@ func main() {
 		srv.actorSource = newKubectlAteActorSource(
 			envOr("KUBECTL_ATE_BIN_PATH", "/usr/local/bin/kubectl-ate"),
 			endpoint,
-			envOr("ATE_NAMESPACE", "kagent-system"),
+			// Deliberately AGORA_ATESPACE, not ATE_NAMESPACE - kubectl-ate
+			// itself reads ATE_NAMESPACE from its own process environment
+			// for a different, reserved purpose (its control-plane target,
+			// see source.go's kubectlAteReservedEnvVars) - reusing that name
+			// here would silently redirect kubectl-ate away from the real
+			// ate-system control plane.
+			envOr("AGORA_ATESPACE", "kagent-system"),
 			envOr("ATE_WORKER_POOL_NAME", "agora-workers"),
 		)
 	}

@@ -1,6 +1,37 @@
 package main
 
-import "testing"
+import (
+	"slices"
+	"strings"
+	"testing"
+)
+
+// TestFilteredChildEnvStripsKubectlAteOwnReservedVars reproduces the finding
+// that kubectl-ate itself reads ATE_NAMESPACE/ATE_API_SERVICE_NAME/
+// ATE_CLIENT_SERVICE_ACCOUNT from its own process environment
+// (solo-io/substrate's internal/ateclient/builder.go) - a name collision
+// with any same-named variable this console sets for its own, unrelated
+// purposes would silently redirect kubectl-ate's control-plane target.
+func TestFilteredChildEnvStripsKubectlAteOwnReservedVars(t *testing.T) {
+	parent := []string{
+		"PATH=/usr/bin",
+		"ATE_NAMESPACE=kagent-system",
+		"ATE_API_SERVICE_NAME=custom",
+		"ATE_CLIENT_SERVICE_ACCOUNT=custom-sa",
+		"HOME=/root",
+	}
+	got := filteredChildEnv(parent)
+	for _, blocked := range []string{"ATE_NAMESPACE=", "ATE_API_SERVICE_NAME=", "ATE_CLIENT_SERVICE_ACCOUNT="} {
+		for _, kv := range got {
+			if strings.HasPrefix(kv, blocked) {
+				t.Errorf("filteredChildEnv must strip %s, found %q", blocked, kv)
+			}
+		}
+	}
+	if !slices.Contains(got, "PATH=/usr/bin") || !slices.Contains(got, "HOME=/root") {
+		t.Errorf("filteredChildEnv must preserve unrelated vars, got %v", got)
+	}
+}
 
 func TestParseActorsJSON(t *testing.T) {
 	data := []byte(`{"actors":[

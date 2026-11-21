@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -64,15 +65,21 @@ func (s *consoleServer) handleIsolationCheck(w http.ResponseWriter, r *http.Requ
 	sessionID := fmt.Sprintf("isolation-probe-%s-%d", req.Target, time.Now().UnixNano())
 	reply, err := s.probeInvoker.Send(r.Context(), req.Target, sessionID, prompt, token)
 	if err != nil {
-		// Deliberately a fixed message, never err.Error() interpolated raw:
-		// the invoker maps its own 401/403 to ErrNotAuthenticated ("please
-		// log in"), which is correct for a visitor's own chat but would be
-		// actively misleading here - a probe auth failure means the
-		// agora-console-system RBAC/Keycloak wiring is misconfigured, not
-		// that anyone needs to log in. The real error is still logged
-		// server-side for whoever is debugging the misconfiguration.
 		log.Printf("isolation probe against %q failed: %v", req.Target, err)
-		writeJSON(w, http.StatusBadGateway, errorResponse{Error: "isolation probe call failed - check the agora-console-system RBAC/Keycloak configuration (see server logs for details)"})
+		if errors.Is(err, ErrNotAuthenticated) {
+			// Only ErrNotAuthenticated gets this fixed wording: the invoker
+			// maps its own 401/403 to it ("please log in"), which is correct
+			// for a visitor's own chat but would be actively misleading here
+			// - for the probe, a 401/403 means the agora-console-system
+			// RBAC/Keycloak wiring is misconfigured, not that anyone needs
+			// to log in.
+			writeJSON(w, http.StatusBadGateway, errorResponse{Error: "isolation probe call failed - check the agora-console-system RBAC/Keycloak configuration (see server logs for details)"})
+			return
+		}
+		// Any other failure (timeout, upstream 5xx, malformed response) is
+		// not an auth problem - report its real cause, not a misleading
+		// guess at the wrong root cause.
+		writeJSON(w, http.StatusBadGateway, errorResponse{Error: "isolation probe call failed: " + err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, isolationCheckResponse{Reply: reply})
