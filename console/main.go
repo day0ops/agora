@@ -67,6 +67,15 @@ func main() {
 		)
 	}
 
+	probeBase := os.Getenv("KAGENT_PROBE_BASE_URL")
+	tokenURL := os.Getenv("AGORA_SYSTEM_OIDC_TOKEN_URL")
+	clientID := os.Getenv("AGORA_SYSTEM_OIDC_CLIENT_ID")
+	clientSecret := os.Getenv("AGORA_SYSTEM_OIDC_CLIENT_SECRET")
+	if probeBase != "" && tokenURL != "" && clientID != "" && clientSecret != "" {
+		srv.probeInvoker = newAgentInvokerHTTP(probeBase)
+		srv.systemToken = newKeycloakSystemTokenSource(tokenURL, clientID, clientSecret)
+	}
+
 	dist, err := fs.Sub(webDist, "web/dist")
 	if err != nil {
 		log.Fatalf("console: load embedded web/dist: %v", err)

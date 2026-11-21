@@ -29,6 +29,7 @@ func (s *consoleServer) accountRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /account/orders", s.handleAccountOrders)
 	mux.HandleFunc("GET /account/stats", s.handleAccountStats)
 	mux.HandleFunc("GET /account/substrate/status", s.handleSubstrateStatus)
+	mux.HandleFunc("POST /account/substrate/isolation-check", s.handleIsolationCheck)
 }
 
 func (s *consoleServer) handleAccountMe(w http.ResponseWriter, r *http.Request) {
