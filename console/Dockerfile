@@ -24,7 +24,20 @@ WORKDIR /src/console
 RUN go mod download
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${VERSION}" -o /out/app .
 
+# kubectl-ate is the substrate CLI the backend shells out to for live actor
+# state (see console/source.go); it is a statically-linked Go binary itself,
+# so it runs fine under distroless static-debian12 below. v1.0.0 matches this
+# repo's own pin (agentic-field-kit's addons/kagent/index.js
+# KUBECTL_ATE_VERSION), not the older v0.2.0-beta5 the sibling
+# fraud-ops-console demo's Dockerfile pins.
+FROM --platform=$BUILDPLATFORM alpine:3.20 AS ate-fetch
+RUN apk add --no-cache curl
+ARG KUBECTL_ATE_VERSION=v1.0.0
+RUN curl -fsSL -o /usr/local/bin/kubectl-ate "https://github.com/kagent-dev/substrate/releases/download/${KUBECTL_ATE_VERSION}/kubectl-ate-linux-amd64" \
+    && chmod +x /usr/local/bin/kubectl-ate
+
 FROM gcr.io/distroless/static-debian12
 COPY --from=builder /out/app /app
+COPY --from=ate-fetch /usr/local/bin/kubectl-ate /usr/local/bin/kubectl-ate
 EXPOSE 8090
 ENTRYPOINT ["/app"]
