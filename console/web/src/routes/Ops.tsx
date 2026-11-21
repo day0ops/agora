@@ -3,6 +3,7 @@ import { Navbar } from "../components/Navbar";
 import { Footer } from "../components/Footer";
 import { EmptyState } from "../components/EmptyState";
 import { SubstrateTopology } from "../components/SubstrateTopology";
+import { IsolationCheck } from "../components/IsolationCheck";
 import { useExecutionDrawer } from "../components/ExecutionDrawer";
 import { IconScan } from "../icons";
 import { useIdentity, canOperate } from "../hooks/useIdentity";
@@ -175,6 +176,7 @@ function OperatorContent() {
           <div className="empty">Loading...</div>
         )}
       </div>
+      <IsolationCheck />
       {drawer}
     </>
   );

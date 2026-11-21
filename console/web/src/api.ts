@@ -139,6 +139,18 @@ export function getSubstrateStatusRaw(): Promise<SubstrateStatusRaw> {
   return request("GET", "/account/substrate/status");
 }
 
+export type IsolationProbeTarget = "trust-safety" | "auto-bidder";
+
+export interface IsolationCheckResponse {
+  reply: string;
+}
+
+export function postIsolationCheck(
+  target: IsolationProbeTarget,
+): Promise<IsolationCheckResponse> {
+  return request("POST", "/account/substrate/isolation-check", { target });
+}
+
 export interface VersionInfo {
   version: string;
 }
