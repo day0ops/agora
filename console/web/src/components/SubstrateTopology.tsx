@@ -43,10 +43,14 @@ export function SubstrateTopology({
     );
   }
   if (result.status === "error") {
+    // Deliberately NOT NotConnectedBanner (that's visually identical to the
+    // "empty" case otherwise - final review finding #6): a configured
+    // source that genuinely failed is a different claim from "not
+    // connected", and must look different, not just read different.
     return actorTable(
       <tr>
         <td colSpan={ACTOR_COLUMNS.length}>
-          <NotConnectedBanner reason={result.message} />
+          <div className="note error">{result.message}</div>
         </td>
       </tr>,
     );
@@ -56,7 +60,7 @@ export function SubstrateTopology({
       {actorTable(
         result.data.actors.map((a) => (
           <tr key={a.id}>
-            <td>{a.id}</td>
+            <td>{a.template}</td>
             <td>{a.state}</td>
             <td>{a.pool}</td>
             <td>{a.lastActivity}</td>

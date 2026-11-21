@@ -2,7 +2,8 @@ import type { AdapterResult } from "./types";
 import { ApiError, getSubstrateStatusRaw } from "../api";
 
 export interface SubstrateActor {
-  id: string;
+  id: string; // the actor's own unique UUID - a React list key, never a display label
+  template: string; // the human-readable label to display (many actors can share one)
   state: string;
   pool: string;
   lastActivity: string;

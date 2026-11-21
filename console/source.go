@@ -209,6 +209,14 @@ func parseActorsJSON(data []byte) ([]Actor, error) {
 	}
 	actors := make([]Actor, 0, len(resp.Actors))
 	for _, a := range resp.Actors {
+		// metadata.name/status.state are required on every real actor
+		// record - valid-but-unexpectedly-shaped JSON (e.g. a field renamed
+		// in a newer kubectl-ate version) unmarshals without error but
+		// leaves these as zero values, which must surface as a real parse
+		// error, not a blank/wrong-looking row in the UI.
+		if a.Metadata.Name == "" || a.Status.State == "" {
+			return nil, fmt.Errorf("kubectl-ate actor record missing metadata.name or status.state (field-name drift?): %+v", a)
+		}
 		actor := Actor{
 			Name:         a.Metadata.Name,
 			Template:     a.ActorTemplate.Name,

@@ -78,6 +78,19 @@ func TestParseActorsJSONInvalidReturnsError(t *testing.T) {
 	}
 }
 
+// TestParseActorsJSONRejectsRecordWithMissingRequiredFields guards against
+// silent kubectl-ate field-name drift (final review Review Focus #1): valid
+// JSON with an unexpectedly different field name unmarshals without error,
+// but leaves metadata.name/status.state as zero values - that must surface
+// as a real error, not a blank/wrong-looking row in the UI.
+func TestParseActorsJSONRejectsRecordWithMissingRequiredFields(t *testing.T) {
+	data := []byte(`{"actors":[{"metadata":{},"actorTemplate":{"name":"trust-safety-1"},"status":{}}]}`)
+	_, err := parseActorsJSON(data)
+	if err == nil {
+		t.Fatal("expected an error for a record with no metadata.name/status.state, got nil")
+	}
+}
+
 func TestParseWorkerPodsJSON(t *testing.T) {
 	data := []byte(`{"workers":[
 		{"metadata":{"name":"w1"},"workerPool":"agora-workers","workerPod":"agora-workers-0",

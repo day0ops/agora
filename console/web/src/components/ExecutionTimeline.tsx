@@ -14,7 +14,7 @@ export function ExecutionTimeline({
   if (result.status === "empty")
     return <NotConnectedBanner reason={result.reason} />;
   if (result.status === "error")
-    return <NotConnectedBanner reason={result.message} />;
+    return <div className="note error">{result.message}</div>;
   return (
     <div className="execution-timeline">
       {result.data.steps.map((s, i) => (

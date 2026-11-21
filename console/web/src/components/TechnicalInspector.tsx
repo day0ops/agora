@@ -19,8 +19,7 @@ export function TechnicalInspector({
       ))}
     </tr>
   );
-  if (result.status === "empty" || result.status === "error") {
-    const reason = result.status === "empty" ? result.reason : result.message;
+  if (result.status === "empty") {
     return (
       <div className="inspector-table-wrap">
         <table className="inspector-table">
@@ -28,7 +27,26 @@ export function TechnicalInspector({
           <tbody>
             <tr>
               <td colSpan={COLUMNS.length}>
-                <NotConnectedBanner reason={reason} />
+                <NotConnectedBanner reason={result.reason} />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  if (result.status === "error") {
+    // Deliberately NOT NotConnectedBanner - a configured source that
+    // genuinely failed must look visibly different from "not connected",
+    // not just read different (final review finding #6).
+    return (
+      <div className="inspector-table-wrap">
+        <table className="inspector-table">
+          <thead>{header}</thead>
+          <tbody>
+            <tr>
+              <td colSpan={COLUMNS.length}>
+                <div className="note error">{result.message}</div>
               </td>
             </tr>
           </tbody>

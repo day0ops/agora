@@ -130,8 +130,16 @@ func TestHandleIsolationCheckMapsAuthFailureHonestly(t *testing.T) {
 	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-operator", []string{"operators"}))
 	w := httptest.NewRecorder()
 	s.handleIsolationCheck(w, req)
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", w.Code, w.Body.String())
+	}
 	var resp errorResponse
-	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v (body: %s)", err, w.Body.String())
+	}
+	if resp.Error == "" {
+		t.Fatal("expected a non-empty error message")
+	}
 	if strings.Contains(strings.ToLower(resp.Error), "log in") {
 		t.Errorf("probe auth failure must not read like a login prompt, got %q", resp.Error)
 	}

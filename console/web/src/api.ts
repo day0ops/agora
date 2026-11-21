@@ -131,7 +131,13 @@ export function getStats(): Promise<Stats> {
 }
 
 export interface SubstrateStatusRaw {
-  actors: { id: string; state: string; pool: string; lastActivity: string }[];
+  actors: {
+    id: string;
+    template: string;
+    state: string;
+    pool: string;
+    lastActivity: string;
+  }[];
   workers: { name: string; pool: string; state: string; occupancy: string }[];
 }
 

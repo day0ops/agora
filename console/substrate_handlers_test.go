@@ -63,7 +63,14 @@ func TestHandleSubstrateStatusReturnsActorsAndWorkers(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(resp.Actors) != 2 || resp.Actors[0].ID != "trust-safety-1" {
+	if len(resp.Actors) != 2 {
+		t.Fatalf("response actors = %+v", resp.Actors)
+	}
+	// ID must be the actor's own unique UUID (a.Name), not the template name -
+	// many actors share one template (that's exactly the density case this
+	// feature shows), so using the template name as a React key would
+	// silently collide (final review finding #5).
+	if resp.Actors[0].ID != "uuid-1" || resp.Actors[0].Template != "trust-safety-1" {
 		t.Fatalf("response actors = %+v", resp.Actors)
 	}
 	if resp.Actors[0].Pool != "agora-workers" {

@@ -3,7 +3,8 @@ package main
 import "net/http"
 
 type actorDTO struct {
-	ID           string `json:"id"`
+	ID           string `json:"id"`       // the actor's own unique UUID - a React list key, never a display label
+	Template     string `json:"template"` // the human-readable label to display (many actors can share one)
 	State        string `json:"state"`
 	Pool         string `json:"pool"`
 	LastActivity string `json:"lastActivity"`
@@ -59,7 +60,8 @@ func (s *consoleServer) handleSubstrateStatus(w http.ResponseWriter, r *http.Req
 			pool = a.Worker.WorkerPool
 		}
 		actorDTOs = append(actorDTOs, actorDTO{
-			ID:           a.Template,
+			ID:           a.Name,
+			Template:     a.Template,
 			State:        a.State,
 			Pool:         pool,
 			LastActivity: a.LastActivity,

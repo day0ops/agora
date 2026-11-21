@@ -12,12 +12,12 @@ describe("SubstrateTopology", () => {
         }}
       />,
     );
-    expect(
-      screen.getByText("Not connected to a live substrate."),
-    ).toBeInTheDocument();
+    const banner = screen.getByText("Not connected to a live substrate.");
+    expect(banner).toBeInTheDocument();
+    expect(banner).not.toHaveClass("error");
   });
 
-  it("renders one row per actor when status is real", () => {
+  it("renders one row per actor when status is real, labelled by template not id", () => {
     render(
       <SubstrateTopology
         result={{
@@ -25,7 +25,8 @@ describe("SubstrateTopology", () => {
           data: {
             actors: [
               {
-                id: "agora-workers-0",
+                id: "uuid-1",
+                template: "trust-safety-agora-swarm-1",
                 state: "running",
                 pool: "agora-workers",
                 lastActivity: "2s ago",
@@ -36,16 +37,49 @@ describe("SubstrateTopology", () => {
         }}
       />,
     );
-    expect(screen.getByText("agora-workers-0")).toBeInTheDocument();
+    expect(screen.getByText("trust-safety-agora-swarm-1")).toBeInTheDocument();
+    expect(screen.queryByText("uuid-1")).not.toBeInTheDocument();
   });
 
-  it("renders a real error state distinctly from empty", () => {
+  it("renders a distinct row per actor even when several share the same template (the density case)", () => {
+    render(
+      <SubstrateTopology
+        result={{
+          status: "real",
+          data: {
+            actors: [
+              {
+                id: "uuid-1",
+                template: "trust-safety-agora-swarm-1",
+                state: "running",
+                pool: "agora-workers",
+                lastActivity: "2s ago",
+              },
+              {
+                id: "uuid-2",
+                template: "trust-safety-agora-swarm-1",
+                state: "suspended",
+                pool: "unassigned",
+                lastActivity: "1m ago",
+              },
+            ],
+            workers: [],
+          },
+        }}
+      />,
+    );
+    expect(screen.getAllByText("trust-safety-agora-swarm-1")).toHaveLength(2);
+  });
+
+  it("renders a real error state with a visibly distinct class from the empty banner", () => {
     render(
       <SubstrateTopology
         result={{ status: "error", message: "ate-api unreachable" }}
       />,
     );
-    expect(screen.getByText(/ate-api unreachable/)).toBeInTheDocument();
+    const banner = screen.getByText(/ate-api unreachable/);
+    expect(banner).toBeInTheDocument();
+    expect(banner).toHaveClass("error");
   });
 
   it("renders worker occupancy alongside actors", () => {
@@ -56,7 +90,8 @@ describe("SubstrateTopology", () => {
           data: {
             actors: [
               {
-                id: "trust-safety-1",
+                id: "uuid-1",
+                template: "trust-safety-1",
                 state: "running",
                 pool: "agora-workers",
                 lastActivity: "2026-11-22T10:00:00Z",
