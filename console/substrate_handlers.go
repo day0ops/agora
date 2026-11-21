@@ -67,7 +67,7 @@ func (s *consoleServer) handleSubstrateStatus(w http.ResponseWriter, r *http.Req
 	}
 	workerDTOs := make([]workerDTO, 0, len(workers))
 	for _, w := range workers {
-		workerDTOs = append(workerDTOs, workerDTO{Name: w.Name, Pool: w.Pool, State: w.State, Occupancy: w.Occupancy})
+		workerDTOs = append(workerDTOs, workerDTO(w))
 	}
 
 	writeJSON(w, http.StatusOK, substrateStatusResponse{Actors: actorDTOs, Workers: workerDTOs})
