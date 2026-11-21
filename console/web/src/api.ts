@@ -130,6 +130,15 @@ export function getStats(): Promise<Stats> {
   return request("GET", "/account/stats");
 }
 
+export interface SubstrateStatusRaw {
+  actors: { id: string; state: string; pool: string; lastActivity: string }[];
+  workers: { name: string; pool: string; state: string; occupancy: string }[];
+}
+
+export function getSubstrateStatusRaw(): Promise<SubstrateStatusRaw> {
+  return request("GET", "/account/substrate/status");
+}
+
 export interface VersionInfo {
   version: string;
 }

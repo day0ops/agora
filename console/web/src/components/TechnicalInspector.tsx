@@ -19,7 +19,8 @@ export function TechnicalInspector({
       ))}
     </tr>
   );
-  if (result.status === "empty") {
+  if (result.status === "empty" || result.status === "error") {
+    const reason = result.status === "empty" ? result.reason : result.message;
     return (
       <div className="inspector-table-wrap">
         <table className="inspector-table">
@@ -27,7 +28,7 @@ export function TechnicalInspector({
           <tbody>
             <tr>
               <td colSpan={COLUMNS.length}>
-                <NotConnectedBanner reason={result.reason} />
+                <NotConnectedBanner reason={reason} />
               </td>
             </tr>
           </tbody>

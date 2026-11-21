@@ -1,56 +1,91 @@
+import type { ReactNode } from "react";
 import { NotConnectedBanner } from "./NotConnectedBanner";
 import type { AdapterResult } from "../adapters/types";
 import type { SubstrateStatus } from "../adapters/substrateAdapter";
 
-const COLUMNS = ["Actor", "State", "Pool", "Last activity"] as const;
+const ACTOR_COLUMNS = ["Actor", "State", "Pool", "Last activity"] as const;
+const WORKER_COLUMNS = ["Worker pod", "Pool", "State", "Occupancy"] as const;
 
-// Real column shape always rendered; today getSubstrateStatus always
-// resolves "empty" (no live Agent Substrate cluster is wired to this
-// console), so the body is the shared not-connected banner spanning every
-// column rather than a fabricated row.
+function actorTable(body: ReactNode) {
+  const header = (
+    <tr>
+      {ACTOR_COLUMNS.map((c) => (
+        <th key={c}>{c}</th>
+      ))}
+    </tr>
+  );
+  return (
+    <div className="inspector-table-wrap">
+      <table className="inspector-table">
+        <thead>{header}</thead>
+        <tbody>{body}</tbody>
+      </table>
+    </div>
+  );
+}
+
+// Three explicit branches, one per AdapterResult variant - "empty" (no live
+// substrate configured) and "error" (a configured call that genuinely
+// failed) render different messages and must never be conflated; only
+// "real" ever reads result.data.
 export function SubstrateTopology({
   result,
 }: {
   result: AdapterResult<SubstrateStatus>;
 }) {
-  const header = (
-    <tr>
-      {COLUMNS.map((c) => (
-        <th key={c}>{c}</th>
-      ))}
-    </tr>
-  );
   if (result.status === "empty") {
-    return (
-      <div className="inspector-table-wrap">
-        <table className="inspector-table">
-          <thead>{header}</thead>
-          <tbody>
-            <tr>
-              <td colSpan={COLUMNS.length}>
-                <NotConnectedBanner reason={result.reason} />
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+    return actorTable(
+      <tr>
+        <td colSpan={ACTOR_COLUMNS.length}>
+          <NotConnectedBanner reason={result.reason} />
+        </td>
+      </tr>,
+    );
+  }
+  if (result.status === "error") {
+    return actorTable(
+      <tr>
+        <td colSpan={ACTOR_COLUMNS.length}>
+          <NotConnectedBanner reason={result.message} />
+        </td>
+      </tr>,
     );
   }
   return (
-    <div className="inspector-table-wrap">
-      <table className="inspector-table">
-        <thead>{header}</thead>
-        <tbody>
-          {result.data.actors.map((a) => (
-            <tr key={a.id}>
-              <td>{a.id}</td>
-              <td>{a.state}</td>
-              <td>{a.pool}</td>
-              <td>{a.lastActivity}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      {actorTable(
+        result.data.actors.map((a) => (
+          <tr key={a.id}>
+            <td>{a.id}</td>
+            <td>{a.state}</td>
+            <td>{a.pool}</td>
+            <td>{a.lastActivity}</td>
+          </tr>
+        )),
+      )}
+      {result.data.workers.length > 0 && (
+        <div className="inspector-table-wrap">
+          <table className="inspector-table">
+            <thead>
+              <tr>
+                {WORKER_COLUMNS.map((c) => (
+                  <th key={c}>{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {result.data.workers.map((w) => (
+                <tr key={w.name}>
+                  <td>{w.name}</td>
+                  <td>{w.pool}</td>
+                  <td>{w.state}</td>
+                  <td>{w.occupancy}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   );
 }
