@@ -18,24 +18,6 @@ type identity struct {
 	SellerTier string   `json:"sellerTier,omitempty"`
 }
 
-// demoAccount is a real logged-in demo user's pre-seeded fixture mapping --
-// see agentic-field-kit's agora-real-identity-ux design doc. SellerTier is
-// only meaningful for a seller account (drives the console's "Pro pricing
-// assistant" badge); zero value for every other role.
-type demoAccount struct {
-	FixtureID  string
-	SellerTier string
-}
-
-// demoAccountsByUsername maps a username to its fixture mapping. Usernames
-// with no entry (e.g. demo-operator) have no buyer/seller fixture of their
-// own -- operators are a pure oversight role, not also a seller or buyer.
-var demoAccountsByUsername = map[string]demoAccount{
-	"demo-buyer":  {FixtureID: "buyer-1"},
-	"demo-buyer2": {FixtureID: "buyer-2"},
-	"demo-seller": {FixtureID: "seller-1", SellerTier: "pro"},
-}
-
 // rolePriority orders the three marketplace groups by precedence, highest
 // first, for a visitor who ends up in more than one. None of this phase's
 // demo users are multi-group; a role-switcher UI has nothing to exercise
@@ -57,9 +39,18 @@ func highestPriorityRole(groups []string) string {
 // console reads. oidc-gateway's ext-auth-service already validated the
 // token's signature and expiry before forwarding it -- the console only
 // ever parses the payload, never re-verifies it.
+//
+// FixtureID and SellerTier come from Keycloak custom-attribute claims (see
+// the 'kagent' realm's customAttributes in agentic-field-kit's profile
+// YAML) rather than any mapping hardcoded here -- the same fixture_id claim
+// agentgateway's agora-mcp-bid-identity CEL policy already checks against
+// place_bid/set_autobid_max calls, so the console and the gateway agree on
+// one source of truth instead of keeping their own copies in sync.
 type forwardedClaims struct {
 	PreferredUsername string   `json:"preferred_username"`
 	Groups            []string `json:"Groups"`
+	FixtureID         string   `json:"fixture_id"`
+	SellerTier        string   `json:"seller_tier"`
 }
 
 func decodeForwardedClaims(token string) (*forwardedClaims, error) {
@@ -91,12 +82,11 @@ func (s *consoleServer) resolveIdentity(r *http.Request) (*identity, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve identity: %w", err)
 	}
-	account := demoAccountsByUsername[claims.PreferredUsername]
 	return &identity{
 		Username:   claims.PreferredUsername,
 		Groups:     claims.Groups,
 		Role:       highestPriorityRole(claims.Groups),
-		FixtureID:  account.FixtureID,
-		SellerTier: account.SellerTier,
+		FixtureID:  claims.FixtureID,
+		SellerTier: claims.SellerTier,
 	}, nil
 }

@@ -8,9 +8,14 @@ import (
 	"testing"
 )
 
-func fakeToken(t *testing.T, username string, groups []string) string {
+func fakeToken(t *testing.T, username string, groups []string, fixtureID, sellerTier string) string {
 	t.Helper()
-	payload, err := json.Marshal(forwardedClaims{PreferredUsername: username, Groups: groups})
+	payload, err := json.Marshal(forwardedClaims{
+		PreferredUsername: username,
+		Groups:            groups,
+		FixtureID:         fixtureID,
+		SellerTier:        sellerTier,
+	})
 	if err != nil {
 		t.Fatalf("marshal claims: %v", err)
 	}
@@ -29,7 +34,7 @@ func TestResolveIdentityReturnsErrNotAuthenticatedWithNoHeader(t *testing.T) {
 func TestResolveIdentityMapsDemoBuyerToBuyerOneFixture(t *testing.T) {
 	srv := newConsoleServer(newCatalogClient("http://unused"), newEventHub(), AgentInvokerStub{})
 	req := httptest.NewRequest("GET", "/account/me", nil)
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers"}, "buyer-1", ""))
 
 	id, err := srv.resolveIdentity(req)
 	if err != nil {
@@ -43,7 +48,7 @@ func TestResolveIdentityMapsDemoBuyerToBuyerOneFixture(t *testing.T) {
 func TestResolveIdentityMapsDemoBuyer2ToBuyerTwoFixture(t *testing.T) {
 	srv := newConsoleServer(newCatalogClient("http://unused"), newEventHub(), AgentInvokerStub{})
 	req := httptest.NewRequest("GET", "/account/me", nil)
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer2", []string{"buyers"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer2", []string{"buyers"}, "buyer-2", ""))
 
 	id, err := srv.resolveIdentity(req)
 	if err != nil {
@@ -57,7 +62,7 @@ func TestResolveIdentityMapsDemoBuyer2ToBuyerTwoFixture(t *testing.T) {
 func TestResolveIdentityPicksHighestPriorityRoleWhenMultipleGroupsPresent(t *testing.T) {
 	srv := newConsoleServer(newCatalogClient("http://unused"), newEventHub(), AgentInvokerStub{})
 	req := httptest.NewRequest("GET", "/account/me", nil)
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "someone", []string{"buyers", "operators"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "someone", []string{"buyers", "operators"}, "", ""))
 
 	id, err := srv.resolveIdentity(req)
 	if err != nil {
@@ -68,38 +73,38 @@ func TestResolveIdentityPicksHighestPriorityRoleWhenMultipleGroupsPresent(t *tes
 	}
 }
 
-func TestResolveIdentityLeavesFixtureIDEmptyForUnmappedUsername(t *testing.T) {
+func TestResolveIdentityLeavesFixtureIDEmptyWhenTokenCarriesNoClaim(t *testing.T) {
 	srv := newConsoleServer(newCatalogClient("http://unused"), newEventHub(), AgentInvokerStub{})
 	req := httptest.NewRequest("GET", "/account/me", nil)
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-operator", []string{"operators"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-operator", []string{"operators"}, "", ""))
 
 	id, err := srv.resolveIdentity(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if id.FixtureID != "" {
-		t.Fatalf("expected no fixture mapping for demo-operator, got %q", id.FixtureID)
+		t.Fatalf("expected no fixture_id for a token with no fixture_id claim, got %q", id.FixtureID)
 	}
 }
 
-func TestResolveIdentityIncludesSellerTierForSellers(t *testing.T) {
+func TestResolveIdentityPassesThroughSellerTierClaim(t *testing.T) {
 	srv := newConsoleServer(newCatalogClient("http://unused"), newEventHub(), AgentInvokerStub{})
 	req := httptest.NewRequest("GET", "/account/me", nil)
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-seller", []string{"sellers"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers", "sellers"}, "buyer-1", "pro"))
 
 	id, err := srv.resolveIdentity(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if id.SellerTier != "pro" {
-		t.Fatalf("expected demo-seller to have sellerTier pro, got %q", id.SellerTier)
+		t.Fatalf("expected the token's seller_tier claim to pass through, got %q", id.SellerTier)
 	}
 }
 
-func TestResolveIdentityLeavesSellerTierEmptyForBuyers(t *testing.T) {
+func TestResolveIdentityLeavesSellerTierEmptyWhenTokenCarriesNoClaim(t *testing.T) {
 	srv := newConsoleServer(newCatalogClient("http://unused"), newEventHub(), AgentInvokerStub{})
 	req := httptest.NewRequest("GET", "/account/me", nil)
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers"}, "buyer-1", ""))
 
 	id, err := srv.resolveIdentity(req)
 	if err != nil {

@@ -24,7 +24,7 @@ func TestHandleAccountMeReturns401WithNoToken(t *testing.T) {
 func TestHandleAccountMeReturnsResolvedIdentity(t *testing.T) {
 	srv := newTestServer("http://unused")
 	req := httptest.NewRequest(http.MethodGet, "/account/me", nil)
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-seller", []string{"sellers"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-seller", []string{"sellers"}, "seller-1", "pro"))
 	rec := httptest.NewRecorder()
 	srv.routes().ServeHTTP(rec, req)
 
@@ -88,7 +88,7 @@ func TestHandleCreateListingDerivesSellerIDFromIdentityNotRequestBody(t *testing
 	srv := newTestServer(catalog.URL)
 	body, _ := json.Marshal(map[string]any{"sellerId": "someone-elses-id", "title": "Widget", "priceCents": 1000})
 	req := httptest.NewRequest(http.MethodPost, "/account/listings", bytes.NewReader(body))
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-seller", []string{"sellers"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-seller", []string{"sellers"}, "seller-1", "pro"))
 	rec := httptest.NewRecorder()
 	srv.routes().ServeHTTP(rec, req)
 
@@ -124,7 +124,7 @@ func TestHandlePlaceBidDerivesBuyerIDFromIdentityAndPublishesEvent(t *testing.T)
 
 	body, _ := json.Marshal(map[string]any{"amountCents": 1500})
 	req := httptest.NewRequest(http.MethodPost, "/account/listings/l1/bids", bytes.NewReader(body))
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers"}, "buyer-1", ""))
 	rec := httptest.NewRecorder()
 	srv.routes().ServeHTTP(rec, req)
 
@@ -169,7 +169,7 @@ func TestHandleCheckoutDerivesBuyerIDFromIdentityWithNoRequestBody(t *testing.T)
 
 	srv := newTestServer(catalog.URL)
 	req := httptest.NewRequest(http.MethodPost, "/account/listings/l1/checkout", nil)
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers"}, "buyer-1", ""))
 	rec := httptest.NewRecorder()
 	srv.routes().ServeHTTP(rec, req)
 
@@ -191,7 +191,7 @@ func TestHandleAccountOrdersUsesIdentityNotQueryParam(t *testing.T) {
 
 	srv := newTestServer(catalog.URL)
 	req := httptest.NewRequest(http.MethodGet, "/account/orders?buyerId=someone-elses-id", nil)
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers"}, "buyer-1", ""))
 	rec := httptest.NewRecorder()
 	srv.routes().ServeHTTP(rec, req)
 
@@ -213,7 +213,7 @@ func TestHandleAccountOrdersReturnsEmptyForUnmappedAccount(t *testing.T) {
 
 	srv := newTestServer(catalog.URL)
 	req := httptest.NewRequest(http.MethodGet, "/account/orders", nil)
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-operator", []string{"operators"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-operator", []string{"operators"}, "", ""))
 	rec := httptest.NewRecorder()
 	srv.routes().ServeHTTP(rec, req)
 
@@ -235,7 +235,7 @@ func TestHandleAccountOrdersReturnsEmptyForUnmappedAccount(t *testing.T) {
 func TestHandleAccountStatsRejectsNonOperators(t *testing.T) {
 	srv := newTestServer("http://unused")
 	req := httptest.NewRequest(http.MethodGet, "/account/stats", nil)
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-buyer", []string{"buyers"}, "buyer-1", ""))
 	rec := httptest.NewRecorder()
 	srv.routes().ServeHTTP(rec, req)
 
@@ -261,7 +261,7 @@ func TestHandleAccountStatsAllowsOperators(t *testing.T) {
 
 	srv := newTestServer(catalog.URL)
 	req := httptest.NewRequest(http.MethodGet, "/account/stats", nil)
-	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-operator", []string{"operators"}))
+	req.Header.Set(forwardedTokenHeader, fakeToken(t, "demo-operator", []string{"operators"}, "", ""))
 	rec := httptest.NewRecorder()
 	srv.routes().ServeHTTP(rec, req)
 
