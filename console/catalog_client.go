@@ -199,3 +199,12 @@ func (c *catalogClient) listOrders(ctx context.Context, buyerID, sellerID string
 	err := c.do(ctx, http.MethodGet, path, nil, &orders)
 	return orders, err
 }
+
+// listAllOrders returns every order on the marketplace, for the operator
+// stats strip -- catalog-api rejects a plain GET /orders with neither filter
+// set, so this opts in explicitly rather than passing two empty filters.
+func (c *catalogClient) listAllOrders(ctx context.Context) ([]fixtures.Order, error) {
+	var orders []fixtures.Order
+	err := c.do(ctx, http.MethodGet, "/orders?all=true", nil, &orders)
+	return orders, err
+}

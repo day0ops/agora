@@ -240,7 +240,7 @@ func (s *consoleServer) handleStats(w http.ResponseWriter, r *http.Request) {
 		writeCatalogError(w, err)
 		return
 	}
-	orders, err := s.catalog.listOrders(r.Context(), "", "")
+	orders, err := s.catalog.listAllOrders(r.Context())
 	if err != nil {
 		writeCatalogError(w, err)
 		return

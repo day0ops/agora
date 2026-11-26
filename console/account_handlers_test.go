@@ -250,6 +250,10 @@ func TestHandleAccountStatsAllowsOperators(t *testing.T) {
 		case "/listings":
 			_ = json.NewEncoder(w).Encode([]fixtures.Listing{{ID: "l1", Status: fixtures.ListingStatusActiveAuction}})
 		case "/orders":
+			if r.URL.Query().Get("all") != "true" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
 			_ = json.NewEncoder(w).Encode([]fixtures.Order{{ID: "o1"}})
 		}
 	}))

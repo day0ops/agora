@@ -154,6 +154,24 @@ func TestCheckoutAndListOrders(t *testing.T) {
 	}
 }
 
+func TestListAllOrdersSendsAllTrue(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		_ = json.NewEncoder(w).Encode([]fixtures.Order{{ID: "o1"}})
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newCatalogClient(srv.URL)
+	orders, err := c.listAllOrders(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotQuery != "all=true" || len(orders) != 1 {
+		t.Fatalf("unexpected list result: query=%s orders=%+v", gotQuery, orders)
+	}
+}
+
 func TestDomainErrorFor4xx(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusConflict)
