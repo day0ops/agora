@@ -1,0 +1,249 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"sync"
+	"time"
+)
+
+// AgentInvoker sends a message to a named concierge agent (e.g.
+// "shopping-assistant", "listing-pricing-assistant") on behalf of a user and
+// returns the agent's reply. token is the caller's own Keycloak access
+// token, forwarded by agentgateway's OIDC gate (oidc-gateway feature) after
+// a real browser login -- there is no service-account identity here, every
+// call is made as the logged-in user.
+type AgentInvoker interface {
+	Send(ctx context.Context, agentName, sessionID, message, token string) (reply string, err error)
+}
+
+// ErrAgentInvokerNotConfigured is returned by AgentInvokerStub for every call.
+var ErrAgentInvokerNotConfigured = errors.New("agent invocation is not wired to a live kagent cluster yet")
+
+// AgentInvokerStub is kept for tests and for running the console with no
+// agentgateway configured at all (AGENTGATEWAY_BASE_URL unset).
+type AgentInvokerStub struct{}
+
+func (AgentInvokerStub) Send(context.Context, string, string, string, string) (string, error) {
+	return "", ErrAgentInvokerNotConfigured
+}
+
+// ErrNotAuthenticated means the request carried no usable Keycloak token -
+// either oidc-gateway never forwarded one (no session), or the agent's A2A
+// route rejected the token as expired/invalid. Both are the same thing from
+// the console's point of view: the user isn't validly logged in right now.
+var ErrNotAuthenticated = errors.New("not authenticated: please log in")
+
+// AgentInvokerHTTP calls a kagent Agent's A2A endpoint through agentgateway,
+// using kagent's A2A JSON-RPC "SendMessage" method (PascalCase, not the A2A
+// spec's "message/send" -- confirmed live against this cluster's enterprise
+// kagent-controller build) at <baseURL>/<agentName>, authenticated with the
+// caller's own forwarded Keycloak access token. BaseURL must already include
+// kagent-controller's own path-mux prefix (/agents/<namespace>) -- the
+// HTTPRoute a substrate-a2a-route feature step creates matches the full
+// /agents/<namespace>/<agentName> path, and omitting the namespace here
+// makes the request fall through to whatever other route shares this
+// Gateway (confirmed live: agora-console's own catch-all route, returning
+// its SPA shell with a 200 instead of reaching the agent at all). See
+// docs/superpowers/specs/2026-11-01-agora-oidc-agentgateway-a2a-design.md in
+// agentic-field-kit for why this goes through agentgateway rather than a
+// kagent-controller client library: kagent's own AgentInstance gRPC API (the
+// recipe the sibling fraud-ops-console demo used) no longer exists at the
+// Agent/Harness/AgentTemplate CRD generation this cluster runs.
+// AgentInvokerHTTP tracks, per console chat session, the contextId
+// kagent-controller itself assigns -- confirmed live (2026-11-02) that
+// SendMessage does NOT accept a client-invented contextId as a new session:
+// a well-formed but unrecognized one fails with JSON-RPC error -32001 "task
+// not found" (kagent tries to resume an existing context, not create one).
+// Only omitting contextId entirely makes the server create a fresh one,
+// which it returns in the response for the client to reuse on later turns.
+type AgentInvokerHTTP struct {
+	BaseURL string
+	Client  *http.Client
+
+	mu       sync.Mutex
+	contexts map[string]string // console sessionID -> kagent-assigned contextId
+}
+
+func newAgentInvokerHTTP(baseURL string) *AgentInvokerHTTP {
+	return &AgentInvokerHTTP{
+		BaseURL:  baseURL,
+		Client:   &http.Client{Timeout: 30 * time.Second},
+		contexts: make(map[string]string),
+	}
+}
+
+type a2aPart struct {
+	Kind string `json:"kind"`
+	Text string `json:"text"`
+}
+
+type a2aMessage struct {
+	Kind      string    `json:"kind,omitempty"`
+	Role      string    `json:"role"`
+	Parts     []a2aPart `json:"parts"`
+	MessageID string    `json:"messageId,omitempty"`
+	// ContextID is kagent-controller's own session identifier, learned from
+	// a prior response (see AgentInvokerHTTP.contexts) -- never client-
+	// invented. Omitted on a session's first message so the server creates
+	// a new context instead of trying (and failing) to resume one.
+	ContextID string `json:"contextId,omitempty"`
+}
+
+// a2aConfiguration's AcceptedOutputModes is required by kagent-controller's
+// A2A 1.0 server -- its absence alone makes the server assume a pre-1.0
+// (0.3) request shape and reject it with "version not supported" (confirmed
+// live, 2026-11-16, against kagent-enterprise 2026.11.1).
+type a2aConfiguration struct {
+	AcceptedOutputModes []string `json:"acceptedOutputModes"`
+}
+
+type a2aSendMessageParams struct {
+	Message       a2aMessage        `json:"message"`
+	Configuration *a2aConfiguration `json:"configuration,omitempty"`
+}
+
+type jsonRPCRequest struct {
+	JSONRPC string               `json:"jsonrpc"`
+	ID      string               `json:"id"`
+	Method  string               `json:"method"`
+	Params  a2aSendMessageParams `json:"params"`
+}
+
+type jsonRPCError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+type a2aArtifact struct {
+	ArtifactID string    `json:"artifactId"`
+	Parts      []a2aPart `json:"parts"`
+}
+
+type a2aTaskStatus struct {
+	State string `json:"state"`
+}
+
+// a2aTask is kagent-controller's actual SendMessage result shape (confirmed
+// live, 2026-11-02): the reply text lives in the LAST artifact, not on a
+// status.message field -- there is no separate flat "message" result kind
+// observed from this agent, so that's the only shape handled here.
+type a2aTask struct {
+	ID        string        `json:"id"`
+	ContextID string        `json:"contextId"`
+	Artifacts []a2aArtifact `json:"artifacts"`
+	Status    a2aTaskStatus `json:"status"`
+}
+
+type a2aResult struct {
+	Task *a2aTask `json:"task"`
+}
+
+type jsonRPCResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      string          `json:"id"`
+	Result  json.RawMessage `json:"result"`
+	Error   *jsonRPCError   `json:"error"`
+}
+
+func replyText(parts []a2aPart) (string, error) {
+	for _, p := range parts {
+		if p.Text != "" {
+			return p.Text, nil
+		}
+	}
+	return "", errors.New("agent reply had no text part")
+}
+
+func (a *AgentInvokerHTTP) Send(ctx context.Context, agentName, sessionID, message, token string) (string, error) {
+	if token == "" {
+		return "", ErrNotAuthenticated
+	}
+
+	a.mu.Lock()
+	kagentContextID := a.contexts[sessionID]
+	a.mu.Unlock()
+
+	reqBody := jsonRPCRequest{
+		JSONRPC: "2.0",
+		ID:      sessionID,
+		Method:  "SendMessage",
+		Params: a2aSendMessageParams{
+			Message: a2aMessage{
+				Kind:      "message",
+				Role:      "ROLE_USER",
+				Parts:     []a2aPart{{Kind: "text", Text: message}},
+				MessageID: fmt.Sprintf("msg-%d", time.Now().UnixNano()),
+				ContextID: kagentContextID,
+			},
+			Configuration: &a2aConfiguration{AcceptedOutputModes: []string{"text"}},
+		},
+	}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("marshal A2A request: %w", err)
+	}
+
+	reqURL := a.BaseURL + "/" + url.PathEscape(agentName)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("build A2A request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+	// kagent-controller's A2A server assumes protocol 0.3 (and rejects the
+	// request) unless this header is present, even when the body is
+	// otherwise 1.0-shaped (confirmed live, 2026-11-16, kagent-enterprise
+	// 2026.11.1).
+	httpReq.Header.Set("A2A-Version", "1.0")
+
+	resp, err := a.Client.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("call agent %q: %w", agentName, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return "", ErrNotAuthenticated
+	}
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read agent %q response: %w", agentName, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("agent %q returned HTTP %d: %s", agentName, resp.StatusCode, respBytes)
+	}
+
+	var rpcResp jsonRPCResponse
+	if err := json.Unmarshal(respBytes, &rpcResp); err != nil {
+		log.Printf("agent %q returned undecodable 200 body (first 500 bytes): %.500s", agentName, respBytes)
+		return "", fmt.Errorf("decode agent %q response: %w", agentName, err)
+	}
+	if rpcResp.Error != nil {
+		return "", fmt.Errorf("agent %q returned JSON-RPC error %d: %s", agentName, rpcResp.Error.Code, rpcResp.Error.Message)
+	}
+
+	var result a2aResult
+	if err := json.Unmarshal(rpcResp.Result, &result); err != nil {
+		return "", fmt.Errorf("decode agent %q result: %w", agentName, err)
+	}
+	if result.Task == nil {
+		return "", fmt.Errorf("agent %q returned a result with no task", agentName)
+	}
+	if len(result.Task.Artifacts) == 0 {
+		return "", fmt.Errorf("agent %q task has no artifacts (state=%v)", agentName, result.Task.Status.State)
+	}
+	if result.Task.ContextID != "" {
+		a.mu.Lock()
+		a.contexts[sessionID] = result.Task.ContextID
+		a.mu.Unlock()
+	}
+	return replyText(result.Task.Artifacts[len(result.Task.Artifacts)-1].Parts)
+}

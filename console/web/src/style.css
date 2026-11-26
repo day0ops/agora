@@ -1,0 +1,1238 @@
+/* === TOKENS === */
+/* Palette and type pulled from cursor.com's own shipped CSS: a warm
+   near-black (not pure black) with pure-white text in dark mode, a warm
+   off-white with near-black text in light mode, and a single vivid accent
+   rather than a multi-color system. Their body/display typeface and mono
+   are proprietary; Geist and JetBrains Mono are the closest openly-licensed
+   equivalents. */
+:root {
+  --bg: #14120b;
+  --surface: #1d1b15;
+  --surface-2: #121311;
+  --border: #26251e;
+  --text: #ffffff;
+  --muted: #938f82;
+  /* A light, warm gold rather than the original orange - bright enough that
+     white text on it fails contrast outright, so --accent-ink flips to a
+     dark ink here instead (11.6:1, see below). --fill-ink stays white for
+     the other solid-fill colors (danger/secondary/sold-stamp), which are
+     dark/saturated enough in both themes not to need the same flip. */
+  --accent: #f2c744;
+  --accent-strong: #ffd966;
+  --accent-ink: #14120b;
+  --fill-ink: #ffffff;
+  --accent-2: #1f8a65;
+  --ok: #1f8a65;
+  --warn: #f54e00;
+  --idle: #8b8070;
+  --info: #6299c3;
+  --bad: #fb2c36;
+  --radius-control: 8px;
+  --radius-card: 14px;
+  --space: 4px;
+  --font-body: "Geist Variable", system-ui, sans-serif;
+  --mono:
+    "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Menlo, Consolas,
+    monospace;
+}
+
+/* WCAG AA contrast, computed from sRGB relative luminance:
+   dark  - text/bg 18.74:1, text/surface 17.22:1, accent-ink/accent 11.64:1
+   light - text/bg 17.41:1, text/surface 18.69:1, accent-ink/accent 6.23:1
+   muted clears 4.5:1 against both bg and surface in both themes.
+   All pairs meet the 4.5:1 body-text floor.
+
+   Status pill text (ok/warn/idle/info/bad/accent) sits on its own 15%-tinted
+   chip background, not on bg/surface directly - the raw status hue there
+   measured as low as 3.2:1 (accent, dark, pre-gold), below the floor. Mixing
+   each status color 70% with --text brings every variant to 5:1 or better
+   in both themes; see .pill.* below. */
+html[data-theme="light"] {
+  --bg: #f7f7f4;
+  --surface: #ffffff;
+  --surface-2: #efeff1;
+  --border: #e0ded6;
+  --text: #141210;
+  --muted: #6b6760;
+  /* A richer, darker indigo than the dark theme's lavender - needed to stay
+     dark enough to pair with white text at 6.23:1 on a light background. */
+  --accent: #5b3df0;
+  --accent-strong: #4529d6;
+  --accent-ink: #ffffff;
+  --fill-ink: #ffffff;
+  --accent-2: #1a7f37;
+  --ok: #15803d;
+  --warn: #b45309;
+  --idle: #8b8070;
+  --info: #1d4ed8;
+  --bad: #b91c1c;
+}
+
+/* === BASE === */
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+#root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+/* Every page wraps its content in one <main>; growing it (not its
+   children - .layout/.panel etc. keep their own content height) pins the
+   footer to the bottom of the viewport on short pages without reintroducing
+   the internal-panel stretching this layout deliberately avoids elsewhere.
+   No min-height override here deliberately: the default `auto` keeps main
+   from ever shrinking below its own content's height, so on a tall page
+   (e.g. Sell's long form) the footer still renders after all of it instead
+   of at the height flex-grow would otherwise allocate. */
+#root > main {
+  flex: 1;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  /* Inset, not outward: an outward ring (outline or box-shadow spread) paints
+     outside the element's own border box, so any ancestor with
+     overflow:hidden - e.g. the chat panel's collapse wrapper - clips it
+     wherever that ancestor's edge lines up with the element's. Inset paints
+     inside the element's own box, where no ancestor clip can ever reach it. */
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* === COMPONENTS === */
+.execution-drawer-root {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+.execution-drawer-root.hidden {
+  display: none;
+}
+.execution-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  /* A fixed dark dim, not var(--bg): --bg is near-white in light theme, so
+     mixing it with transparent barely dimmed the page behind the drawer. */
+  background: color-mix(in srgb, black 40%, transparent);
+}
+.execution-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  /* Sized to content (no bottom:0) rather than stretched to the full
+     viewport - most of this drawer's content is a short summary, and
+     forcing full height left a large empty void below it. max-height keeps
+     a long agent journey scrolling internally instead of overflowing the
+     viewport. */
+  max-height: 100vh;
+  width: min(440px, 100vw);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 16px;
+  overflow-y: auto;
+}
+.execution-drawer-head,
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+}
+.panel-head h2 {
+  margin: 0;
+}
+.execution-drawer-head h2 {
+  font-size: 15px;
+  margin: 0;
+}
+.execution-section h3 {
+  font-size: 12.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.trust-check-line {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.behind-the-scenes-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 15px 24px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(10px);
+  flex: none;
+}
+.topbar-left {
+  display: flex;
+  align-items: baseline;
+  gap: 26px;
+  margin-right: auto;
+  min-width: 0;
+}
+.topbar .brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.1px;
+}
+.topbar .brand svg {
+  color: var(--accent);
+  flex: none;
+}
+.topbar nav {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  padding-left: 26px;
+  border-left: 1px solid var(--border);
+}
+.topbar nav a {
+  padding-bottom: 5px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease;
+}
+.topbar nav a:hover {
+  color: var(--text);
+}
+.topbar nav a.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.account-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.account-link:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+.account-menu {
+  position: relative;
+}
+.account-menu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.account-menu-trigger:hover {
+  border-color: var(--muted);
+  background: var(--surface);
+}
+.account-menu-trigger svg {
+  color: var(--muted);
+  flex: none;
+  transition: transform 0.15s ease;
+}
+.account-menu-trigger[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.account-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  flex: none;
+}
+.account-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 160px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  padding: 6px;
+  z-index: 20;
+}
+.account-menu-item {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+.account-menu-item:hover {
+  background: var(--surface-2);
+}
+
+button {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+button:hover {
+  background: var(--accent-strong);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+button.ghost:hover {
+  color: var(--text);
+  border-color: var(--muted);
+  background: transparent;
+}
+button.danger {
+  background: var(--bad);
+  color: var(--fill-ink);
+}
+button.danger:hover {
+  background: var(--bad);
+  filter: brightness(1.12);
+}
+button.secondary {
+  background: var(--accent-2);
+  color: var(--fill-ink);
+}
+button.secondary:hover {
+  background: var(--accent-2);
+  filter: brightness(1.12);
+}
+button.link {
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 13px;
+  padding: 2px 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+button.link:hover {
+  background: transparent;
+  color: var(--bad);
+}
+
+.pill {
+  display: inline-block;
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.pill.ok {
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  color: color-mix(in srgb, var(--ok) 70%, var(--text) 30%);
+}
+.pill.warn {
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+  color: color-mix(in srgb, var(--warn) 70%, var(--text) 30%);
+}
+.pill.idle {
+  background: color-mix(in srgb, var(--idle) 15%, transparent);
+  color: color-mix(in srgb, var(--muted) 70%, var(--text) 30%);
+}
+.pill.info {
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+  color: color-mix(in srgb, var(--info) 70%, var(--text) 30%);
+}
+.pill.bad {
+  background: color-mix(in srgb, var(--bad) 15%, transparent);
+  color: color-mix(in srgb, var(--bad) 70%, var(--text) 30%);
+}
+.pill.accent {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: color-mix(in srgb, var(--accent) 70%, var(--text) 30%);
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.panel h2 {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+.chat-mount {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.buy-now-btn {
+  width: 100%;
+}
+.create-submit {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.grid {
+  display: grid;
+  /* auto-fit (not auto-fill): auto-fill reserves track space for columns
+     that have no items, which stops existing cards from growing to fill the
+     row and reads as the row being cut off short of the panel's edge. */
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+  align-content: start;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px 2px 4px 4px;
+}
+.grid .empty-state {
+  grid-column: 1 / -1;
+}
+
+/* Lot cards - a listing is a numbered auction lot (real auction-house
+   convention, not decoration); numbers and prices use the mono face for a
+   precise, technical feel. */
+.card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 14px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition:
+    border-color 0.15s,
+    transform 0.1s;
+}
+.card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.card .lot-plate {
+  position: absolute;
+  top: -8px;
+  left: 12px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+/* listing-image covers a fixed-ratio box regardless of the source photo's
+   own aspect ratio, so the grid stays aligned; category-SVG fallbacks sit on
+   --surface-2 since they have a transparent background. */
+.listing-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--surface-2);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+.card .title {
+  font-weight: 600;
+  font-size: 15.5px;
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card .meta {
+  color: var(--muted);
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.card .price {
+  font-family: var(--mono);
+  font-size: 18.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.card .foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 2px;
+}
+.card .countdown {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  transition: color 0.3s;
+}
+.card .countdown.urgent {
+  color: var(--bad);
+  animation: urgent-pulse 1s ease-in-out infinite;
+}
+@keyframes urgent-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 14px;
+  padding: 10px 2px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 32px 16px;
+}
+.empty-state-icon {
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.empty-state-icon svg {
+  width: 32px;
+  height: 32px;
+}
+.empty-state-title {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 15px;
+}
+.empty-state-body {
+  color: var(--muted);
+  font-size: 13.5px;
+  max-width: 320px;
+}
+
+.detail {
+  position: relative;
+}
+.detail .lot-plate {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.detail h3 {
+  font-weight: 600;
+  font-size: 18.5px;
+  margin: 0 0 4px;
+}
+.detail .desc {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+.detail .price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.detail .price-row .price {
+  font-family: var(--mono);
+  font-size: 26.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The signature moment: a sold lot gets a solid badge dropped onto its
+   detail panel the instant it closes. */
+.sold-stamp {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: var(--bad);
+  color: var(--fill-ink);
+  font-weight: 700;
+  font-size: 12.5px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 6px;
+  pointer-events: none;
+  animation: stamp-in 0.25s ease-out;
+}
+@keyframes stamp-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Bid history reads like a ledger: ruled rows, mono amounts. */
+.bid-history {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+.bid-history li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.bid-history .who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bid-history .amt {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.orders-ledger {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.orders-ledger li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.orders-ledger li:last-child {
+  border-bottom: 0;
+}
+.orders-ledger .item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.orders-ledger .amt {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+form.inline {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+form.inline input {
+  flex: 1;
+  min-width: 0;
+}
+label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 10px 0 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+label:first-child {
+  margin-top: 0;
+}
+input,
+select,
+textarea {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+}
+/* Native select arrows render flush against the box's own border with no
+   room to breathe - appearance:none drops that rendering entirely so a
+   custom chevron (inline SVG, recolored per theme below since a data-URI
+   can't read --muted) gets real padding instead. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6l4 4 4-4' stroke='%23938f82' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+html[data-theme="light"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6l4 4 4-4' stroke='%236b6760' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.identity-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.identity-picker select {
+  width: auto;
+}
+
+.chat-log {
+  flex: 1;
+  min-height: 120px;
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.chat-msg {
+  font-size: 14px;
+  background: var(--surface-2);
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+.chat-msg span {
+  white-space: pre-wrap;
+}
+.chat-msg b {
+  display: block;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.chat-msg.you {
+  align-self: flex-end;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
+}
+.chat-form {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+.chat-input {
+  flex: 1;
+  min-height: 0;
+  max-height: 80px;
+  resize: none;
+}
+
+/* Chat panel collapse - grid-template-rows 0fr/1fr transitions cleanly for
+   content of unknown height, unlike max-height tricks; the inner wrapper's
+   overflow:hidden clips mid-transition. */
+.chat-panel-head {
+  display: flex;
+  justify-content: flex-end;
+}
+.chat-panel-toggle svg {
+  transition: transform 0.15s ease;
+}
+.chat-panel-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.chat-panel-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.2s ease;
+}
+.chat-panel-collapse.collapsed {
+  grid-template-rows: 0fr;
+}
+.chat-panel-collapse > div {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: none;
+}
+.stat {
+  background: var(--surface);
+  padding: 14px 16px;
+}
+.stat b {
+  display: block;
+  font-family: var(--mono);
+  font-size: 27.5px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.stat span {
+  color: var(--muted);
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.activity-panel {
+  flex: 1;
+}
+
+.event-log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 6px;
+}
+.event-log .entry {
+  font-size: 13.5px;
+  font-family: var(--mono);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  display: flex;
+  gap: 10px;
+}
+.event-log .entry .ts {
+  color: var(--muted);
+  flex: none;
+}
+.event-log .entry .kind {
+  color: var(--accent-2);
+  flex: none;
+}
+
+.note {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.note.error {
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.inspector-table-wrap {
+  overflow-x: auto;
+}
+.inspector-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.inspector-table th {
+  text-align: left;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.inspector-table td {
+  padding: 10px 8px;
+}
+.execution-timeline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+}
+.execution-timeline-arrow {
+  color: var(--muted);
+}
+
+.site-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 14px 22px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+.site-footer a:hover {
+  color: var(--text);
+}
+
+/* === PAGES === */
+.page {
+  display: flex;
+  flex-direction: column;
+  padding: 18px 22px;
+  gap: 14px;
+}
+.page h1 {
+  font-size: 20.5px;
+  font-weight: 600;
+  margin: 0;
+}
+.page .lede {
+  color: var(--muted);
+  font-size: 14.5px;
+  margin: -8px 0 0;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  align-items: start;
+  gap: 16px;
+}
+@media (max-width: 920px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Landing page */
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 64px 20px 48px;
+  gap: 14px;
+  flex: none;
+}
+.hero h1 {
+  font-weight: 700;
+  font-size: 44px;
+  line-height: 1.1;
+  letter-spacing: -1px;
+  margin: 0;
+  max-width: 760px;
+}
+.hero p {
+  color: var(--muted);
+  max-width: 560px;
+  font-size: 15.5px;
+}
+.hero-ctas {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.hero-ctas a {
+  padding: 11px 22px;
+  border-radius: var(--radius-control);
+  font-weight: 600;
+  font-size: 14.5px;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.hero-ctas a.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.hero-ctas a.primary:hover {
+  background: var(--accent-strong);
+}
+.hero-ctas a.secondary {
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.hero-ctas a.secondary:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+/* Product rails - horizontal scroll on mobile, a fixed 4-up grid from the
+   desktop breakpoint up since every rail is capped at 4 listings. */
+.rails {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 0 22px 40px;
+}
+.rail h2 {
+  font-size: 12.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+.rail-track {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.rail-track .empty-state {
+  width: 100%;
+}
+@media (min-width: 860px) {
+  .rail-track {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    overflow-x: visible;
+  }
+  .rail-track .empty-state {
+    grid-column: 1 / -1;
+  }
+}
+.rail-card {
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 10px 10px 12px;
+  transition:
+    border-color 0.15s,
+    transform 0.1s;
+}
+@media (min-width: 860px) {
+  .rail-card {
+    flex: initial;
+  }
+}
+.rail-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.rail-card .listing-image {
+  margin-bottom: 0;
+}
+.rail-card-title {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.rail-card-foot .price {
+  font-family: var(--mono);
+  font-size: 14.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sell page - the create-listing form reads as a two-step flow (draft, then
+   review) without a wizard component: a small step label precedes each half,
+   and a top border marks where review begins. */
+.form-step-label {
+  font-size: 11.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+.assist-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0;
+}
+.assist-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.assist-card .empty-state {
+  padding: 16px 14px;
+}
+.review-step {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.review-step .form-step-label {
+  margin-bottom: 4px;
+}
+.review-step-note {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+.pro-badge {
+  margin-bottom: 8px;
+}
+
+/* Shop page */
+.shop-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.shop-filters input[type="search"] {
+  flex: 1 1 200px;
+}
+.shop-filters select {
+  flex: 0 1 180px;
+}
+.lot-card .title {
+  margin-top: 0;
+}
