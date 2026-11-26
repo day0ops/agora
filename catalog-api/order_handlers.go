@@ -6,7 +6,8 @@ import (
 )
 
 // ErrOrderFilterRequired guards GET /orders: an empty buyerId/sellerId is a
-// filter that matches every order in the marketplace, not "no filter".
+// filter that matches every order in the marketplace, not "no filter" -
+// unless the caller opts in explicitly with all=true.
 var ErrOrderFilterRequired = errors.New("buyerId or sellerId is required")
 
 type checkoutRequest struct {
@@ -51,7 +52,7 @@ func handleListOrders(store *Store) http.HandlerFunc {
 			BuyerID:  r.URL.Query().Get("buyerId"),
 			SellerID: r.URL.Query().Get("sellerId"),
 		}
-		if filter.BuyerID == "" && filter.SellerID == "" {
+		if filter.BuyerID == "" && filter.SellerID == "" && r.URL.Query().Get("all") != "true" {
 			writeBadRequest(w, ErrOrderFilterRequired)
 			return
 		}

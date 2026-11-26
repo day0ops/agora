@@ -485,3 +485,37 @@ func TestHandleListOrdersRejectsMissingFilter(t *testing.T) {
 		t.Fatalf("expected 400 for a GET /orders with no buyerId or sellerId, got %d", resp.StatusCode)
 	}
 }
+
+func TestHandleListOrdersAllTrueBypassesFilter(t *testing.T) {
+	store := newStoreWithIDFunc(
+		[]fixtures.Listing{{ID: "l2", SellerID: "seller-1", Type: fixtures.ListingTypeBuyNow, Status: fixtures.ListingStatusActiveBuyNow, PriceCents: 4500}},
+		nil,
+		func(prefix string) string { return prefix + "-generated" },
+	)
+	srv := httptest.NewServer(NewMux(store))
+	t.Cleanup(srv.Close)
+
+	body, err := json.Marshal(checkoutRequest{BuyerID: "buyer-1"})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	postResp, err := http.Post(srv.URL+"/listings/l2/checkout", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /listings/l2/checkout: %v", err)
+	}
+	_ = postResp.Body.Close()
+
+	listResp, err := http.Get(srv.URL + "/orders?all=true")
+	if err != nil {
+		t.Fatalf("GET /orders?all=true: %v", err)
+	}
+	defer func() { _ = listResp.Body.Close() }()
+
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for GET /orders?all=true, got %d", listResp.StatusCode)
+	}
+	orders := decodeJSON[[]fixtures.Order](t, listResp)
+	if len(orders) != 1 {
+		t.Fatalf("expected 1 order across the whole marketplace, got %+v", orders)
+	}
+}
